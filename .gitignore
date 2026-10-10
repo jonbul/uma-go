@@ -1,3 +1,5 @@
 /server
 /uma
 *.exe
+# Delve debug binaries (VS Code / GoLand debugging)
+__debug_bin*

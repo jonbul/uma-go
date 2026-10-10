@@ -1,0 +1,68 @@
+# Tests and builds the UMA game server (Go), then publishes
+# the binary: a "latest-snapshot" prerelease for PRs and main, and a
+# versioned release (from metadata.properties) for main.
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: Go
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+    types: [opened, synchronize, reopened]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Vet
+      run: go vet ./...
+
+    # Runs real WebSocket clients against the server (see internal/lobby).
+    - name: Test
+      run: go test -race -v ./...
+
+    # The server's main package is cmd/server, not the module root.
+    - name: Build
+      run: CGO_ENABLED=0 go build -v -o uma ./cmd/server
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: uma
+        path: uma
+
+    - name: Get version
+      id: version
+      run: echo "version=$(grep '^version=' metadata.properties | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+
+    - name: Create snapshot
+      if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: latest-snapshot
+        name: Latest Snapshot
+        prerelease: true
+        files: uma
+
+    - name: Create release
+      if: github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ steps.version.outputs.version }}
+        name: Release v${{ steps.version.outputs.version }}
+        files: uma
